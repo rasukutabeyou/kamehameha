@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from math import hypot
+from typing import Optional
+
+import cv2
+import numpy as np
+
+
+@dataclass
+class KameState:
+    active: bool
+    charging: bool
+    confidence: float
+    origin: tuple[int, int]
+    direction: tuple[float, float]
+    radius: int
+    mode: str
+    player_id: int = 0
+    detected: bool = False
+    chest_center: tuple[int, int] = (0, 0)
+    chest_radius: int = 0
+
+
+class SinglePoseDetector:
+    def __init__(
+        self,
+        mp_pose,
+        detection_confidence: float,
+        tracking_confidence: float,
+        player_id: int,
+    ) -> None:
+        self._mp_pose = mp_pose
+        self._pose = self._mp_pose.Pose(
+            model_complexity=1,
+            smooth_landmarks=True,
+            enable_segmentation=False,
+            min_detection_confidence=detection_confidence,
+            min_tracking_confidence=tracking_confidence,
+        )
+        self._player_id = player_id
+        self._charge_frames = 0
+        self._active_smooth = 0.0
+        self._last_direction = (1.0 if player_id == 0 else -1.0, 0.0)
+
+    def close(self) -> None:
+        self._pose.close()
+
+    def detect(self, frame_bgr: np.ndarray, x_offset: int = 0) -> KameState:
+        height, width = frame_bgr.shape[:2]
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        result = self._pose.process(rgb)
+        if not result.pose_landmarks:
+            self._charge_frames = max(0, self._charge_frames - 1)
+            self._active_smooth *= 0.72
+            return self._idle(width, height, x_offset)
+
+        landmarks = result.pose_landmarks.landmark
+        pose = self._mp_pose.PoseLandmark
+
+        left_wrist = self._point(landmarks[pose.LEFT_WRIST], width, height)
+        right_wrist = self._point(landmarks[pose.RIGHT_WRIST], width, height)
+        left_elbow = self._point(landmarks[pose.LEFT_ELBOW], width, height)
+        right_elbow = self._point(landmarks[pose.RIGHT_ELBOW], width, height)
+        left_shoulder = self._point(landmarks[pose.LEFT_SHOULDER], width, height)
+        right_shoulder = self._point(landmarks[pose.RIGHT_SHOULDER], width, height)
+        left_hip = self._point(landmarks[pose.LEFT_HIP], width, height)
+        right_hip = self._point(landmarks[pose.RIGHT_HIP], width, height)
+
+        important = [
+            left_wrist,
+            right_wrist,
+            left_elbow,
+            right_elbow,
+            left_shoulder,
+            right_shoulder,
+        ]
+        if any(point is None for point in important):
+            self._active_smooth *= 0.75
+            return self._idle(width, height, x_offset)
+
+        lw = left_wrist
+        rw = right_wrist
+        le = left_elbow
+        re = right_elbow
+        ls = left_shoulder
+        rs = right_shoulder
+        assert lw and rw and le and re and ls and rs
+
+        shoulder_mid = self._mid(ls, rs)
+        hip_mid = self._mid(left_hip, right_hip) if left_hip and right_hip else shoulder_mid
+        body_mid = self._mid(shoulder_mid, hip_mid)
+        hand_mid = self._mid(lw, rw)
+        shoulder_width = max(64.0, self._dist(ls, rs))
+        wrist_gap = self._dist(lw, rw)
+        hands_together = wrist_gap < shoulder_width * 0.62
+
+        reach = self._dist(body_mid, hand_mid)
+        extension = reach / max(shoulder_width, 1.0)
+        elbows_forward = self._dist(le, lw) + self._dist(re, rw) > shoulder_width * 0.95
+
+        charging = hands_together and extension < 1.25
+        if charging:
+            self._charge_frames = min(18, self._charge_frames + 1)
+        else:
+            self._charge_frames = max(0, self._charge_frames - 1)
+
+        firing_gesture = hands_together and extension >= 0.82 and elbows_forward
+        active_raw = firing_gesture and (self._charge_frames >= 3 or extension >= 1.18)
+        self._active_smooth = self._active_smooth * 0.68 + (1.0 if active_raw else 0.0) * 0.32
+        active = self._active_smooth > 0.36
+
+        dx = hand_mid[0] - shoulder_mid[0]
+        dy = hand_mid[1] - shoulder_mid[1]
+        norm = hypot(dx, dy)
+        mode = "beam"
+        if norm < shoulder_width * 0.32:
+            mode = "front"
+            direction = self._last_direction
+        else:
+            direction = (dx / norm, dy / norm)
+            self._last_direction = direction
+
+        confidence = min(1.0, 0.35 + self._active_smooth * 0.55 + min(extension / 2.0, 0.1))
+        radius = int(max(24, min(96, shoulder_width * (0.28 + self._active_smooth * 0.22))))
+        chest = self._mid(shoulder_mid, body_mid)
+        return KameState(
+            active=active,
+            charging=charging or self._charge_frames > 0,
+            confidence=confidence,
+            origin=(int(hand_mid[0] + x_offset), int(hand_mid[1])),
+            direction=direction,
+            radius=radius,
+            mode=mode,
+            player_id=self._player_id,
+            detected=True,
+            chest_center=(int(chest[0] + x_offset), int(chest[1])),
+            chest_radius=int(max(34, min(110, shoulder_width * 0.58))),
+        )
+
+    def _idle(self, width: int, height: int, x_offset: int) -> KameState:
+        return KameState(
+            active=False,
+            charging=self._charge_frames > 0,
+            confidence=0.0,
+            origin=(x_offset + width // 2, height // 2),
+            direction=self._last_direction,
+            radius=32,
+            mode="idle",
+            player_id=self._player_id,
+            detected=False,
+            chest_center=(x_offset + width // 2, height // 2),
+            chest_radius=0,
+        )
+
+    @staticmethod
+    def _point(landmark, width: int, height: int) -> Optional[tuple[float, float]]:
+        if landmark.visibility < 0.38:
+            return None
+        return (landmark.x * width, landmark.y * height)
+
+    @staticmethod
+    def _mid(
+        a: tuple[float, float],
+        b: tuple[float, float],
+    ) -> tuple[float, float]:
+        return ((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5)
+
+    @staticmethod
+    def _dist(a: tuple[float, float], b: tuple[float, float]) -> float:
+        return hypot(a[0] - b[0], a[1] - b[1])
+
+
+class KamehamehaDetector:
+    def __init__(
+        self,
+        detection_confidence: float = 0.55,
+        tracking_confidence: float = 0.55,
+        players: int = 2,
+    ) -> None:
+        import mediapipe as mp
+
+        self.players = max(1, min(2, players))
+        self._mp_pose = mp.solutions.pose
+        self._detectors = [
+            SinglePoseDetector(self._mp_pose, detection_confidence, tracking_confidence, player_id=i)
+            for i in range(self.players)
+        ]
+
+    def close(self) -> None:
+        for detector in self._detectors:
+            detector.close()
+
+    def detect(self, frame_bgr: np.ndarray) -> list[KameState]:
+        if self.players == 1:
+            return [self._detectors[0].detect(frame_bgr, 0)]
+
+        height, width = frame_bgr.shape[:2]
+        overlap = int(width * 0.08)
+        mid = width // 2
+        left_end = min(width, mid + overlap)
+        right_start = max(0, mid - overlap)
+
+        left_state = self._detectors[0].detect(frame_bgr[:, :left_end], 0)
+        right_state = self._detectors[1].detect(frame_bgr[:, right_start:], right_start)
+        return [left_state, right_state]
