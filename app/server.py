@@ -15,9 +15,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.beam import BeamController
 from app.config import GameConfig
-from app.detector import KamehamehaDetector
-from app.effects import KamehamehaEffect
-from app.game import KameGame
+from app.detector import BeamDetector
+from app.effects import BeamEffect
+from app.game import BeamGame
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -36,19 +36,19 @@ class StreamStats:
 class FrameProcessor:
     def __init__(self) -> None:
         self.game_config = GameConfig.from_env()
-        self.detector = KamehamehaDetector(
-            detection_confidence=float(os.getenv("KAME_DETECTION", "0.55")),
-            tracking_confidence=float(os.getenv("KAME_TRACKING", "0.55")),
-            players=int(os.getenv("KAME_PLAYERS", "2")),
+        self.detector = BeamDetector(
+            detection_confidence=float(os.getenv("BEAM_DETECTION", "0.55")),
+            tracking_confidence=float(os.getenv("BEAM_TRACKING", "0.55")),
+            players=int(os.getenv("BEAM_PLAYERS", "2")),
         )
         self.beam = BeamController(self.detector.players, self.game_config)
-        self.effect = KamehamehaEffect()
-        self.game = KameGame(
+        self.effect = BeamEffect()
+        self.game = BeamGame(
             players=self.detector.players,
             config=self.game_config,
         )
-        self.target_width = int(os.getenv("KAME_WIDTH", "960"))
-        self.stats = StreamStats(jpeg_quality=int(os.getenv("KAME_JPEG_QUALITY", "82")))
+        self.target_width = int(os.getenv("BEAM_WIDTH", "960"))
+        self.stats = StreamStats(jpeg_quality=int(os.getenv("BEAM_JPEG_QUALITY", "82")))
         self._lock = threading.Lock()
         self._latest_jpeg = self._encode_placeholder()
 
@@ -63,7 +63,7 @@ class FrameProcessor:
             return
 
         frame = self._resize(frame)
-        states = self.beam.apply(self.detector.detect(frame), self.game.ki)
+        states = self.beam.apply(self.detector.detect(frame), self.game.energy)
         collision = self.effect.beam_collision(frame.shape, states)
         self.game.update(states, frame.shape, collision)
         rendered = self.effect.render(frame, states, collision=collision)
@@ -137,7 +137,7 @@ class FrameProcessor:
 
 
 processor: FrameProcessor | None = None
-app = FastAPI(title="Kamehameha Live")
+app = FastAPI(title="Beam Live")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

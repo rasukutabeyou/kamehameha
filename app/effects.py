@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from app.detector import KameState
+from app.detector import BeamState
 
 
 @dataclass
@@ -18,7 +18,7 @@ class Explosion:
     age: int = 0
 
 
-class KamehamehaEffect:
+class BeamEffect:
     def __init__(self) -> None:
         self._frame_index = 0
         self._explosions: list[Explosion] = []
@@ -26,7 +26,7 @@ class KamehamehaEffect:
     def render(
         self,
         frame: np.ndarray,
-        states: KameState | list[KameState],
+        states: BeamState | list[BeamState],
         collision: tuple[tuple[int, int], float] | None = None,
     ) -> np.ndarray:
         self._frame_index += 1
@@ -34,8 +34,8 @@ class KamehamehaEffect:
         state_list = states if isinstance(states, list) else [states]
 
         for state in state_list:
-            if state.super_saiyan:
-                output = self._draw_super(output, state)
+            if state.ultra:
+                output = self._draw_ultra(output, state)
             if state.powering:
                 output = self._draw_power(output, state)
             if state.charging:
@@ -58,7 +58,7 @@ class KamehamehaEffect:
         output = self._draw_explosions(output)
         return output
 
-    def _draw_super(self, frame: np.ndarray, state: KameState) -> np.ndarray:
+    def _draw_ultra(self, frame: np.ndarray, state: BeamState) -> np.ndarray:
         center = state.chest_center
         span = max(42, state.chest_radius)
         palette = [(20, 210, 255), (70, 245, 255), (210, 255, 255)]
@@ -72,7 +72,7 @@ class KamehamehaEffect:
             cv2.line(frame, p1, p2, palette[i % len(palette)], 2, lineType=cv2.LINE_AA)
         return frame
 
-    def _draw_power(self, frame: np.ndarray, state: KameState) -> np.ndarray:
+    def _draw_power(self, frame: np.ndarray, state: BeamState) -> np.ndarray:
         center = state.chest_center
         palette = [(45, 210, 100), (105, 255, 155), (225, 255, 210)]
         span = max(36, state.chest_radius)
@@ -85,7 +85,7 @@ class KamehamehaEffect:
             cv2.line(frame, (x, y0), (x, y1), palette[i % len(palette)], 2, lineType=cv2.LINE_AA)
         return frame
 
-    def _draw_charge(self, frame: np.ndarray, state: KameState) -> np.ndarray:
+    def _draw_charge(self, frame: np.ndarray, state: BeamState) -> np.ndarray:
         overlay = np.zeros_like(frame)
         pulse = 0.75 + 0.25 * math.sin(time.time() * 18.0 + state.player_id * 1.7)
         charge_boost = 0.45 + state.charge_ratio * 0.55
@@ -115,7 +115,7 @@ class KamehamehaEffect:
     def _draw_beam(
         self,
         frame: np.ndarray,
-        state: KameState,
+        state: BeamState,
         collision_center: tuple[int, int] | None = None,
     ) -> np.ndarray:
         height, width = frame.shape[:2]
@@ -150,7 +150,7 @@ class KamehamehaEffect:
         cv2.circle(frame, state.origin, int(base_width * 1.05), palette[1], 3, lineType=cv2.LINE_AA)
         return frame
 
-    def _draw_front_burst(self, frame: np.ndarray, state: KameState) -> np.ndarray:
+    def _draw_front_burst(self, frame: np.ndarray, state: BeamState) -> np.ndarray:
         center = state.origin
         overlay = np.zeros_like(frame)
         pulse = 1.0 + 0.12 * math.sin(self._frame_index * 0.7)
@@ -173,7 +173,7 @@ class KamehamehaEffect:
             cv2.line(frame, p1, p2, palette[1], 3, lineType=cv2.LINE_AA)
         return frame
 
-    def _draw_particles(self, frame: np.ndarray, state: KameState) -> np.ndarray:
+    def _draw_particles(self, frame: np.ndarray, state: BeamState) -> np.ndarray:
         rng = np.random.default_rng(self._frame_index * 17 + state.player_id)
         ox, oy = state.origin
         dx, dy = state.direction
@@ -250,7 +250,7 @@ class KamehamehaEffect:
     def beam_collision(
         self,
         shape: tuple[int, int, int],
-        states: list[KameState],
+        states: list[BeamState],
     ) -> tuple[tuple[int, int], float] | None:
         active = [state for state in states if state.active and state.mode == "beam"]
         if len(active) < 2:

@@ -9,7 +9,7 @@ import numpy as np
 
 
 @dataclass
-class KameState:
+class BeamState:
     active: bool
     charging: bool
     confidence: float
@@ -25,7 +25,7 @@ class KameState:
     beam_ratio: float = 0.0
     powering: bool = False
     transforming: bool = False
-    super_saiyan: bool = False
+    ultra: bool = False
 
 
 class SinglePoseDetector:
@@ -52,7 +52,7 @@ class SinglePoseDetector:
     def close(self) -> None:
         self._pose.close()
 
-    def detect(self, frame_bgr: np.ndarray, x_offset: int = 0) -> KameState:
+    def detect(self, frame_bgr: np.ndarray, x_offset: int = 0) -> BeamState:
         height, width = frame_bgr.shape[:2]
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         result = self._pose.process(rgb)
@@ -136,7 +136,7 @@ class SinglePoseDetector:
         confidence = min(1.0, 0.35 + self._active_smooth * 0.55 + min(extension / 2.0, 0.1))
         radius = int(max(24, min(96, shoulder_width * (0.28 + self._active_smooth * 0.22))))
         chest = self._mid(shoulder_mid, body_mid)
-        return KameState(
+        return BeamState(
             active=active,
             charging=charging or self._charge_frames > 0,
             confidence=confidence,
@@ -152,8 +152,8 @@ class SinglePoseDetector:
             transforming=transforming,
         )
 
-    def _idle(self, width: int, height: int, x_offset: int) -> KameState:
-        return KameState(
+    def _idle(self, width: int, height: int, x_offset: int) -> BeamState:
+        return BeamState(
             active=False,
             charging=self._charge_frames > 0,
             confidence=0.0,
@@ -185,7 +185,7 @@ class SinglePoseDetector:
         return hypot(a[0] - b[0], a[1] - b[1])
 
 
-class KamehamehaDetector:
+class BeamDetector:
     def __init__(
         self,
         detection_confidence: float = 0.55,
@@ -205,7 +205,7 @@ class KamehamehaDetector:
         for detector in self._detectors:
             detector.close()
 
-    def detect(self, frame_bgr: np.ndarray) -> list[KameState]:
+    def detect(self, frame_bgr: np.ndarray) -> list[BeamState]:
         if self.players == 1:
             return [self._detectors[0].detect(frame_bgr, 0)]
 

@@ -1,1 +1,1 @@
-"""Realtime Kamehameha effect application."""
+"""Realtime beam effect application."""

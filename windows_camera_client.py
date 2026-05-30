@@ -9,7 +9,7 @@ import websockets
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Send a Windows webcam stream to Kamehameha Live.")
+    parser = argparse.ArgumentParser(description="Send a Windows webcam stream to Beam Live.")
     parser.add_argument("--server", default="ws://127.0.0.1:8000/ws/camera")
     parser.add_argument("--camera", type=int, default=0)
     parser.add_argument("--width", type=int, default=960)

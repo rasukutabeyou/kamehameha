@@ -1,7 +1,7 @@
 [project]
-name = "kamehameha-live"
+name = "beam-live"
 version = "0.1.0"
-description = "Realtime webcam pose detection with a flashy Kamehameha-style effect streamed from a Windows camera over SSH."
+description = "Realtime webcam pose detection with a flashy beam-style effect streamed from a Windows camera over SSH."
 requires-python = ">=3.10,<3.12"
 dependencies = [
     "fastapi>=0.111.0",

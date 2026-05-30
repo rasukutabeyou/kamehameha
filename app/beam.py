@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, replace
 
 from app.config import GameConfig
-from app.detector import KameState
+from app.detector import BeamState
 
 
 @dataclass
@@ -23,11 +23,11 @@ class BeamController:
     def reset(self) -> None:
         self._states = [PlayerBeamState() for _ in range(self._players)]
 
-    def apply(self, detected_states: list[KameState], ki: list[float] | None = None) -> list[KameState]:
+    def apply(self, detected_states: list[BeamState], energy: list[float] | None = None) -> list[BeamState]:
         now = time.time()
-        return [self._apply_player(state, now, ki) for state in detected_states]
+        return [self._apply_player(state, now, energy) for state in detected_states]
 
-    def _apply_player(self, state: KameState, now: float, ki: list[float] | None = None) -> KameState:
+    def _apply_player(self, state: BeamState, now: float, energy: list[float] | None = None) -> BeamState:
         if state.player_id >= len(self._states):
             return replace(state, active=False, charging=False, charge_ratio=0.0, beam_ratio=0.0)
 
@@ -39,11 +39,11 @@ class BeamController:
             beam.exhausted = False
             return replace(state, active=False, charging=False, charge_ratio=0.0, beam_ratio=0.0)
 
-        has_enough_ki = (
-            ki is None
-            or (state.player_id < len(ki) and ki[state.player_id] >= self._config.beam_ki_cost)
+        has_enough_energy = (
+            energy is None
+            or (state.player_id < len(energy) and energy[state.player_id] >= self._config.beam_energy_cost)
         )
-        if beam.shot_started_at is None and not has_enough_ki:
+        if beam.shot_started_at is None and not has_enough_energy:
             beam.charge_started_at = None
             beam.exhausted = False
             return replace(state, active=False, charging=False, charge_ratio=0.0, beam_ratio=0.0)
@@ -72,8 +72,8 @@ class BeamController:
         if not can_fire:
             return replace(state, active=False, charging=True, charge_ratio=charge_ratio, beam_ratio=0.0)
 
-        if ki is not None:
-            ki[state.player_id] = max(0.0, ki[state.player_id] - self._config.beam_ki_cost)
+        if energy is not None:
+            energy[state.player_id] = max(0.0, energy[state.player_id] - self._config.beam_energy_cost)
 
         beam.shot_started_at = now
         return replace(state, active=True, charging=False, charge_ratio=1.0, beam_ratio=1.0)
