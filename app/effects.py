@@ -34,6 +34,10 @@ class KamehamehaEffect:
         state_list = states if isinstance(states, list) else [states]
 
         for state in state_list:
+            if state.super_saiyan:
+                output = self._draw_super(output, state)
+            if state.powering:
+                output = self._draw_power(output, state)
             if state.charging:
                 output = self._draw_charge(output, state)
 
@@ -54,17 +58,45 @@ class KamehamehaEffect:
         output = self._draw_explosions(output)
         return output
 
+    def _draw_super(self, frame: np.ndarray, state: KameState) -> np.ndarray:
+        center = state.chest_center
+        span = max(42, state.chest_radius)
+        palette = [(20, 210, 255), (70, 245, 255), (210, 255, 255)]
+        for i in range(14):
+            angle = i * math.tau / 14.0 + self._frame_index * 0.05
+            wave = 0.85 + 0.18 * math.sin(self._frame_index * 0.18 + i)
+            inner = span * 0.65
+            outer = span * (1.45 + (i % 4) * 0.16) * wave
+            p1 = (int(center[0] + math.cos(angle) * inner), int(center[1] + math.sin(angle) * inner))
+            p2 = (int(center[0] + math.cos(angle) * outer), int(center[1] + math.sin(angle) * outer))
+            cv2.line(frame, p1, p2, palette[i % len(palette)], 2, lineType=cv2.LINE_AA)
+        return frame
+
+    def _draw_power(self, frame: np.ndarray, state: KameState) -> np.ndarray:
+        center = state.chest_center
+        palette = [(45, 210, 100), (105, 255, 155), (225, 255, 210)]
+        span = max(36, state.chest_radius)
+        for i in range(8):
+            offset = (i - 3.5) / 3.5
+            wave = math.sin(self._frame_index * 0.22 + i * 0.9 + state.player_id)
+            x = int(center[0] + offset * span * 0.9 + wave * 5)
+            y0 = int(center[1] + span * 0.78)
+            y1 = int(center[1] - span * (0.85 + (i % 3) * 0.16))
+            cv2.line(frame, (x, y0), (x, y1), palette[i % len(palette)], 2, lineType=cv2.LINE_AA)
+        return frame
+
     def _draw_charge(self, frame: np.ndarray, state: KameState) -> np.ndarray:
         overlay = np.zeros_like(frame)
         pulse = 0.75 + 0.25 * math.sin(time.time() * 18.0 + state.player_id * 1.7)
-        radius = int(state.radius * (0.8 + state.confidence * pulse))
+        charge_boost = 0.45 + state.charge_ratio * 0.55
+        radius = int(state.radius * (0.8 + state.confidence * pulse * charge_boost))
         center = state.origin
 
         palette = self._palette(state.player_id)
         for scale, color, alpha in [
-            (1.7, palette[0], 0.10),
-            (1.2, palette[1], 0.18),
-            (0.72, (255, 255, 245), 0.42),
+            (1.7, palette[0], 0.08 + state.charge_ratio * 0.05),
+            (1.2, palette[1], 0.12 + state.charge_ratio * 0.10),
+            (0.72, (255, 255, 245), 0.22 + state.charge_ratio * 0.28),
         ]:
             cv2.circle(overlay, center, int(radius * scale), color, -1, lineType=cv2.LINE_AA)
             frame = cv2.addWeighted(frame, 1.0, overlay, alpha, 0.0)
@@ -77,6 +109,7 @@ class KamehamehaEffect:
                 int(center[1] + math.sin(angle) * radius * 1.7),
             )
             cv2.line(frame, outer, center, palette[1], 2, lineType=cv2.LINE_AA)
+        self._draw_radial_meter(frame, center, int(radius * 1.95), state.charge_ratio, palette[2])
         return frame
 
     def _draw_beam(
@@ -156,6 +189,30 @@ class KamehamehaEffect:
             color = palette[int(rng.integers(0, len(palette)))]
             cv2.circle(frame, (int(point[0]), int(point[1])), size, color, -1, lineType=cv2.LINE_AA)
         return frame
+
+    @staticmethod
+    def _draw_radial_meter(
+        frame: np.ndarray,
+        center: tuple[int, int],
+        radius: int,
+        ratio: float,
+        color: tuple[int, int, int],
+    ) -> None:
+        ratio = max(0.0, min(1.0, ratio))
+        cv2.circle(frame, center, radius, (40, 46, 58), 2, lineType=cv2.LINE_AA)
+        if ratio <= 0.0:
+            return
+        cv2.ellipse(
+            frame,
+            center,
+            (radius, radius),
+            -90,
+            0,
+            360 * ratio,
+            color,
+            4,
+            lineType=cv2.LINE_AA,
+        )
 
     def _draw_explosions(self, frame: np.ndarray) -> np.ndarray:
         next_explosions: list[Explosion] = []

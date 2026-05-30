@@ -21,6 +21,11 @@ class KameState:
     detected: bool = False
     chest_center: tuple[int, int] = (0, 0)
     chest_radius: int = 0
+    charge_ratio: float = 0.0
+    beam_ratio: float = 0.0
+    powering: bool = False
+    transforming: bool = False
+    super_saiyan: bool = False
 
 
 class SinglePoseDetector:
@@ -100,16 +105,22 @@ class SinglePoseDetector:
         extension = reach / max(shoulder_width, 1.0)
         elbows_forward = self._dist(le, lw) + self._dist(re, rw) > shoulder_width * 0.95
 
-        charging = hands_together and extension < 1.25
+        hands_low = lw[1] > shoulder_mid[1] + shoulder_width * 0.12 and rw[1] > shoulder_mid[1] + shoulder_width * 0.12
+        wrists_near_core = self._dist(lw, body_mid) < shoulder_width * 1.12 and self._dist(rw, body_mid) < shoulder_width * 1.12
+        elbows_tucked = self._dist(le, body_mid) < shoulder_width * 0.92 and self._dist(re, body_mid) < shoulder_width * 0.92
+        powering = not hands_together and hands_low and wrists_near_core and elbows_tucked
+        transforming = lw[1] < shoulder_mid[1] - shoulder_width * 0.55 and rw[1] < shoulder_mid[1] - shoulder_width * 0.55
+
+        charging = hands_together and extension < 1.25 and not powering and not transforming
         if charging:
             self._charge_frames = min(18, self._charge_frames + 1)
         else:
             self._charge_frames = max(0, self._charge_frames - 1)
 
-        firing_gesture = hands_together and extension >= 0.82 and elbows_forward
+        firing_gesture = hands_together and extension >= 0.82 and elbows_forward and not powering and not transforming
         active_raw = firing_gesture and (self._charge_frames >= 3 or extension >= 1.18)
         self._active_smooth = self._active_smooth * 0.68 + (1.0 if active_raw else 0.0) * 0.32
-        active = self._active_smooth > 0.36
+        active = self._active_smooth > 0.36 and not transforming
 
         dx = hand_mid[0] - shoulder_mid[0]
         dy = hand_mid[1] - shoulder_mid[1]
@@ -137,6 +148,8 @@ class SinglePoseDetector:
             detected=True,
             chest_center=(int(chest[0] + x_offset), int(chest[1])),
             chest_radius=int(max(34, min(110, shoulder_width * 0.58))),
+            powering=powering,
+            transforming=transforming,
         )
 
     def _idle(self, width: int, height: int, x_offset: int) -> KameState:

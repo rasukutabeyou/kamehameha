@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
+from app.config import GameConfig
 from app.detector import KameState
 
 
@@ -23,6 +24,21 @@ class HitEvent:
 class GameSnapshot:
     hp: list[int]
     max_hp: int
+    ki: list[float]
+    max_ki: float
+    super_saiyan: list[bool]
+    damage: int
+    hit_cooldown_s: float
+    beam_charge_s: float
+    beam_duration_s: float
+    beam_ki_cost: float
+    ki_charge_per_s: float
+    ki_charge_damage_bonus: int
+    super_ki_cost: float
+    super_damage_multiplier: float
+    super_ki_charge_multiplier: float
+    super_damage_reduction: int
+    super_ki_drain_per_s: float
     last_hit: int | None = None
     winner: int | None = None
     hits: int = 0
@@ -31,28 +47,38 @@ class GameSnapshot:
 @dataclass
 class KameGame:
     players: int
-    max_hp: int = 100
-    damage: int = 6
-    hit_cooldown_s: float = 0.38
+    config: GameConfig = field(default_factory=GameConfig)
     hp: list[int] = field(default_factory=list)
+    ki: list[float] = field(default_factory=list)
+    super_saiyan: list[bool] = field(default_factory=list)
     last_damage_at: list[float] = field(default_factory=list)
     hit_events: list[HitEvent] = field(default_factory=list)
     hits: int = 0
     last_hit: int | None = None
+    last_update_at: float = field(default_factory=time.time)
 
     def __post_init__(self) -> None:
         self.players = max(1, self.players)
         if not self.hp:
-            self.hp = [self.max_hp for _ in range(self.players)]
+            self.hp = [self.config.max_hp for _ in range(self.players)]
+        if not self.ki:
+            initial_ki = min(self.config.ki_max, max(0.0, self.config.ki_initial))
+            self.ki = [initial_ki for _ in range(self.players)]
+        if not self.super_saiyan:
+            self.super_saiyan = [False for _ in range(self.players)]
         if not self.last_damage_at:
             self.last_damage_at = [0.0 for _ in range(self.players)]
 
     def reset(self) -> None:
-        self.hp = [self.max_hp for _ in range(self.players)]
+        self.hp = [self.config.max_hp for _ in range(self.players)]
+        initial_ki = min(self.config.ki_max, max(0.0, self.config.ki_initial))
+        self.ki = [initial_ki for _ in range(self.players)]
+        self.super_saiyan = [False for _ in range(self.players)]
         self.last_damage_at = [0.0 for _ in range(self.players)]
         self.hit_events.clear()
         self.hits = 0
         self.last_hit = None
+        self.last_update_at = time.time()
 
     def update(
         self,
@@ -61,25 +87,75 @@ class KameGame:
         beam_collision: tuple[tuple[int, int], float] | None,
     ) -> None:
         now = time.time()
-        state_by_id = {state.player_id: state for state in states}
+        self._update_ki_and_super(states, now)
+
         for target in states:
             if not target.detected or target.chest_radius <= 0 or self.hp[target.player_id] <= 0:
                 continue
-            if now - self.last_damage_at[target.player_id] < self.hit_cooldown_s:
+            if now - self.last_damage_at[target.player_id] < self.config.hit_cooldown_s:
                 continue
             for shooter in states:
                 if shooter.player_id == target.player_id or not shooter.active or shooter.mode != "beam":
                     continue
                 if self._beam_hits_chest(shooter, target, frame_shape, beam_collision):
-                    self.hp[target.player_id] = max(0, self.hp[target.player_id] - self.damage)
+                    damage = self._attack_damage(shooter, target)
+                    self.hp[target.player_id] = max(0, self.hp[target.player_id] - damage)
                     self.last_damage_at[target.player_id] = now
-                    self.hit_events.append(HitEvent(target.player_id, target.chest_center, self.damage))
+                    self.hit_events.append(HitEvent(target.player_id, target.chest_center, damage))
                     self.hits += 1
                     self.last_hit = target.player_id
                     break
 
         self.hit_events = [event for event in self.hit_events if event.age < event.ttl]
-        _ = state_by_id
+
+    def _update_ki_and_super(self, states: list[KameState], now: float) -> None:
+        dt = max(0.0, min(1.0, now - self.last_update_at))
+        self.last_update_at = now
+        for state in states:
+            if state.player_id >= len(self.ki):
+                continue
+            player_id = state.player_id
+            if self.hp[player_id] <= 0:
+                self.super_saiyan[player_id] = False
+                state.super_saiyan = False
+                continue
+
+            if self.super_saiyan[player_id] and dt > 0.0:
+                self.ki[player_id] = max(0.0, self.ki[player_id] - self.config.super_ki_drain_per_s * dt)
+                if self.ki[player_id] <= 0.0:
+                    self.super_saiyan[player_id] = False
+
+            if (
+                state.detected
+                and state.transforming
+                and not self.super_saiyan[player_id]
+                and self.ki[player_id] >= self.config.super_ki_cost
+            ):
+                self.ki[player_id] = max(0.0, self.ki[player_id] - self.config.super_ki_cost)
+                self.super_saiyan[player_id] = True
+
+            if state.detected and state.powering and dt > 0.0:
+                charge_rate = self.config.ki_charge_per_s
+                if self.super_saiyan[player_id]:
+                    charge_rate *= self.config.super_ki_charge_multiplier
+                self.ki[player_id] = min(self.config.ki_max, self.ki[player_id] + charge_rate * dt)
+
+            if self.super_saiyan[player_id] and self.ki[player_id] <= 0.0:
+                self.super_saiyan[player_id] = False
+            state.super_saiyan = self.super_saiyan[player_id]
+
+    def _attack_damage(self, shooter: KameState, target: KameState) -> int:
+        damage = float(self.config.damage)
+        if self._is_super(shooter.player_id):
+            damage *= self.config.super_damage_multiplier
+        if target.powering:
+            damage += self.config.ki_charge_damage_bonus
+        if self._is_super(target.player_id):
+            damage -= self.config.super_damage_reduction
+        return max(0, int(round(damage)))
+
+    def _is_super(self, player_id: int) -> bool:
+        return 0 <= player_id < len(self.super_saiyan) and self.super_saiyan[player_id]
 
     def snapshot(self) -> GameSnapshot:
         alive = [index for index, hp in enumerate(self.hp) if hp > 0]
@@ -88,20 +164,30 @@ class KameGame:
             winner = alive[0]
         return GameSnapshot(
             hp=list(self.hp),
-            max_hp=self.max_hp,
+            max_hp=self.config.max_hp,
+            ki=[round(value, 1) for value in self.ki],
+            max_ki=self.config.ki_max,
+            super_saiyan=list(self.super_saiyan),
+            damage=self.config.damage,
+            hit_cooldown_s=self.config.hit_cooldown_s,
+            beam_charge_s=self.config.beam_charge_s,
+            beam_duration_s=self.config.beam_duration_s,
+            beam_ki_cost=self.config.beam_ki_cost,
+            ki_charge_per_s=self.config.ki_charge_per_s,
+            ki_charge_damage_bonus=self.config.ki_charge_damage_bonus,
+            super_ki_cost=self.config.super_ki_cost,
+            super_damage_multiplier=self.config.super_damage_multiplier,
+            super_ki_charge_multiplier=self.config.super_ki_charge_multiplier,
+            super_damage_reduction=self.config.super_damage_reduction,
+            super_ki_drain_per_s=self.config.super_ki_drain_per_s,
             last_hit=self.last_hit,
             winner=winner,
             hits=self.hits,
         )
 
     def draw_overlay(self, frame: np.ndarray, states: list[KameState]) -> np.ndarray:
-        for state in states:
-            if state.detected and state.chest_radius > 0:
-                color = (70, 210, 255) if state.player_id == 0 else (245, 110, 230)
-                cv2.circle(frame, state.chest_center, state.chest_radius, color, 2, lineType=cv2.LINE_AA)
-                cv2.circle(frame, state.chest_center, 5, (255, 255, 255), -1, lineType=cv2.LINE_AA)
-
-        self._draw_hp_bars(frame)
+        self._draw_target_zones(frame, states)
+        self._draw_player_bars(frame, states)
         next_events: list[HitEvent] = []
         for event in self.hit_events:
             progress = event.age / max(1, event.ttl)
@@ -126,23 +212,38 @@ class KameGame:
         self.hit_events = next_events
         return frame
 
-    def _draw_hp_bars(self, frame: np.ndarray) -> None:
+    def _draw_target_zones(self, frame: np.ndarray, states: list[KameState]) -> None:
+        for state in states:
+            if not state.detected or state.chest_radius <= 0:
+                continue
+            color = (70, 210, 255) if state.player_id == 0 else (245, 110, 230)
+            if state.super_saiyan:
+                color = (60, 245, 255)
+            elif state.powering:
+                color = (80, 255, 145)
+            cv2.circle(frame, state.chest_center, state.chest_radius, color, 2, lineType=cv2.LINE_AA)
+            cv2.circle(frame, state.chest_center, 5, (255, 255, 255), -1, lineType=cv2.LINE_AA)
+
+    def _draw_player_bars(self, frame: np.ndarray, states: list[KameState]) -> None:
         height, width = frame.shape[:2]
         bar_w = min(330, max(180, width // 3))
-        bar_h = 18
+        bar_h = 16
         y = 18
         positions = [(22, y), (width - bar_w - 22, y)]
         colors = [(70, 210, 255), (245, 110, 230)]
+        states_by_id = {state.player_id: state for state in states}
         for player_id in range(min(self.players, 2)):
             x, y0 = positions[player_id]
-            hp_ratio = self.hp[player_id] / max(1, self.max_hp)
-            cv2.rectangle(frame, (x - 3, y0 - 3), (x + bar_w + 3, y0 + bar_h + 3), (10, 12, 16), -1)
-            cv2.rectangle(frame, (x, y0), (x + bar_w, y0 + bar_h), (54, 61, 72), -1)
-            cv2.rectangle(frame, (x, y0), (x + int(bar_w * hp_ratio), y0 + bar_h), colors[player_id], -1)
-            cv2.rectangle(frame, (x, y0), (x + bar_w, y0 + bar_h), (230, 235, 245), 1)
-            text = f"P{player_id + 1} HP {self.hp[player_id]}"
-            tx = x if player_id == 0 else x + bar_w - 104
-            cv2.putText(frame, text, (tx, y0 + 39), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (245, 247, 250), 2, cv2.LINE_AA)
+            align_right = player_id == 1
+            self._draw_bar(frame, x, y0, bar_w, bar_h, self.hp[player_id] / max(1, self.config.max_hp), colors[player_id], "HP")
+            self._draw_bar(frame, x, y0 + 24, bar_w, bar_h, self.ki[player_id] / max(1.0, self.config.ki_max), (88, 230, 120), "KI")
+            state = states_by_id.get(player_id)
+            beam_ratio = state.beam_ratio if state else 0.0
+            self._draw_bar(frame, x, y0 + 48, bar_w, 8, beam_ratio, (255, 235, 110), "")
+            status = " SSJ" if self.super_saiyan[player_id] else ""
+            text = f"P{player_id + 1}{status} HP {self.hp[player_id]}  KI {int(round(self.ki[player_id]))}"
+            tx = x if not align_right else x + bar_w - 206
+            cv2.putText(frame, text, (tx, y0 + 78), cv2.FONT_HERSHEY_SIMPLEX, 0.56, (245, 247, 250), 2, cv2.LINE_AA)
 
         snapshot = self.snapshot()
         if snapshot.winner is not None:
@@ -158,6 +259,25 @@ class KameGame:
                 3,
                 cv2.LINE_AA,
             )
+
+    @staticmethod
+    def _draw_bar(
+        frame: np.ndarray,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        ratio: float,
+        color: tuple[int, int, int],
+        label: str,
+    ) -> None:
+        ratio = max(0.0, min(1.0, ratio))
+        cv2.rectangle(frame, (x - 3, y - 3), (x + width + 3, y + height + 3), (10, 12, 16), -1)
+        cv2.rectangle(frame, (x, y), (x + width, y + height), (54, 61, 72), -1)
+        cv2.rectangle(frame, (x, y), (x + int(width * ratio), y + height), color, -1)
+        cv2.rectangle(frame, (x, y), (x + width, y + height), (230, 235, 245), 1)
+        if label:
+            cv2.putText(frame, label, (x + 6, y + height - 3), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (18, 22, 28), 1, cv2.LINE_AA)
 
     def _beam_hits_chest(
         self,

@@ -13,6 +13,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.beam import BeamController
+from app.config import GameConfig
 from app.detector import KamehamehaDetector
 from app.effects import KamehamehaEffect
 from app.game import KameGame
@@ -33,17 +35,17 @@ class StreamStats:
 
 class FrameProcessor:
     def __init__(self) -> None:
+        self.game_config = GameConfig.from_env()
         self.detector = KamehamehaDetector(
             detection_confidence=float(os.getenv("KAME_DETECTION", "0.55")),
             tracking_confidence=float(os.getenv("KAME_TRACKING", "0.55")),
             players=int(os.getenv("KAME_PLAYERS", "2")),
         )
+        self.beam = BeamController(self.detector.players, self.game_config)
         self.effect = KamehamehaEffect()
         self.game = KameGame(
             players=self.detector.players,
-            max_hp=int(os.getenv("KAME_MAX_HP", "100")),
-            damage=int(os.getenv("KAME_DAMAGE", "6")),
-            hit_cooldown_s=float(os.getenv("KAME_HIT_COOLDOWN", "0.38")),
+            config=self.game_config,
         )
         self.target_width = int(os.getenv("KAME_WIDTH", "960"))
         self.stats = StreamStats(jpeg_quality=int(os.getenv("KAME_JPEG_QUALITY", "82")))
@@ -61,7 +63,7 @@ class FrameProcessor:
             return
 
         frame = self._resize(frame)
-        states = self.detector.detect(frame)
+        states = self.beam.apply(self.detector.detect(frame), self.game.ki)
         collision = self.effect.beam_collision(frame.shape, states)
         self.game.update(states, frame.shape, collision)
         rendered = self.effect.render(frame, states, collision=collision)
@@ -168,6 +170,7 @@ async def status() -> dict[str, object]:
 async def reset_game() -> dict[str, bool]:
     assert processor is not None
     processor.game.reset()
+    processor.beam.reset()
     return {"ok": True}
 
 

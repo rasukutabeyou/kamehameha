@@ -72,6 +72,10 @@
         background: #f56ee6;
       }
 
+      .hpfill.ki {
+        background: #58e678;
+      }
+
       button {
         height: 30px;
         padding: 0 12px;
@@ -146,6 +150,8 @@
         <span id="latency">processing: 0 ms</span>
         <span class="hp">P1 <span class="hpbar"><span class="hpfill" id="p1hp"></span></span> <span id="p1text">100</span></span>
         <span class="hp">P2 <span class="hpbar"><span class="hpfill p2" id="p2hp"></span></span> <span id="p2text">100</span></span>
+        <span class="hp">P1 KI <span class="hpbar"><span class="hpfill ki" id="p1ki"></span></span> <span id="p1kitext">50</span></span>
+        <span class="hp">P2 KI <span class="hpbar"><span class="hpfill ki" id="p2ki"></span></span> <span id="p2kitext">50</span></span>
         <button id="reset" type="button">Reset</button>
       </div>
     </header>
@@ -161,6 +167,10 @@
       const p2hp = document.getElementById("p2hp");
       const p1text = document.getElementById("p1text");
       const p2text = document.getElementById("p2text");
+      const p1ki = document.getElementById("p1ki");
+      const p2ki = document.getElementById("p2ki");
+      const p1kitext = document.getElementById("p1kitext");
+      const p2kitext = document.getElementById("p2kitext");
       const reset = document.getElementById("reset");
 
       async function refreshStatus() {
@@ -176,8 +186,15 @@
           const maxHp = game.max_hp || 100;
           p1hp.style.width = `${Math.max(0, Math.min(100, (hp[0] || 0) / maxHp * 100))}%`;
           p2hp.style.width = `${Math.max(0, Math.min(100, (hp[1] || 0) / maxHp * 100))}%`;
-          p1text.textContent = hp[0] ?? 0;
-          p2text.textContent = hp[1] ?? 0;
+          const superSaiyan = game.super_saiyan || [false, false];
+          p1text.textContent = `${hp[0] ?? 0}${superSaiyan[0] ? " SSJ" : ""}`;
+          p2text.textContent = `${hp[1] ?? 0}${superSaiyan[1] ? " SSJ" : ""}`;
+          const ki = game.ki || [50, 50];
+          const maxKi = game.max_ki || 100;
+          p1ki.style.width = `${Math.max(0, Math.min(100, (ki[0] || 0) / maxKi * 100))}%`;
+          p2ki.style.width = `${Math.max(0, Math.min(100, (ki[1] || 0) / maxKi * 100))}%`;
+          p1kitext.textContent = Math.round(ki[0] ?? 0);
+          p2kitext.textContent = Math.round(ki[1] ?? 0);
         } catch {
           dot.classList.remove("online");
           camera.textContent = "camera: offline";
