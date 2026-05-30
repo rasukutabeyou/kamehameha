@@ -76,18 +76,33 @@
         background: #58e678;
       }
 
-      button {
+      button,
+      select {
         height: 30px;
         padding: 0 12px;
         border: 1px solid #465569;
         background: #1b2432;
         color: #f5f7fb;
         border-radius: 6px;
+      }
+
+      button {
         cursor: pointer;
       }
 
-      button:hover {
+      button:hover,
+      select:hover {
         background: #263348;
+      }
+
+      .control {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .control span {
+        color: #93a4ba;
       }
 
       .dot {
@@ -107,9 +122,53 @@
         min-height: 0;
         display: grid;
         place-items: center;
+        position: relative;
         background:
           radial-gradient(circle at center, rgba(41, 111, 153, 0.14), transparent 44%),
           #080a0d;
+      }
+
+      .debug-panel {
+        position: absolute;
+        right: 14px;
+        bottom: 14px;
+        width: min(420px, calc(100vw - 28px));
+        max-height: min(460px, calc(100vh - 96px));
+        overflow: auto;
+        border: 1px solid #3b495c;
+        background: rgba(10, 14, 20, 0.84);
+        color: #d7e1ef;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.45;
+        padding: 10px 12px;
+        display: none;
+      }
+
+      .debug-panel.visible {
+        display: block;
+      }
+
+      .debug-player + .debug-player {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #2a3545;
+      }
+
+      .debug-title {
+        color: #f5f7fb;
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+
+      .debug-grid {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 2px 10px;
+      }
+
+      .debug-key {
+        color: #90a4bd;
       }
 
       img {
@@ -152,11 +211,16 @@
         <span class="hp">P2 <span class="hpbar"><span class="hpfill p2" id="p2hp"></span></span> <span id="p2text">100</span></span>
         <span class="hp">P1 ENERGY <span class="hpbar"><span class="hpfill energy" id="p1energy"></span></span> <span id="p1energytext">50</span></span>
         <span class="hp">P2 ENERGY <span class="hpbar"><span class="hpfill energy" id="p2energy"></span></span> <span id="p2energytext">50</span></span>
+        <label class="control"><span>NPC</span><select id="npcDifficulty"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
+        <button id="battleStart" type="button">Battle Start</button>
+        <span id="battleState">battle: ready</span>
+        <label class="control"><span>Debug</span><select id="debugMode"><option value="off">Off</option><option value="basic">Basic</option><option value="full">Full</option></select></label>
         <button id="reset" type="button">Reset</button>
       </div>
     </header>
     <main>
       <img src="/video.mjpg" alt="processed live camera stream" />
+      <aside class="debug-panel" id="debugPanel"></aside>
     </main>
     <script>
       const dot = document.getElementById("dot");
@@ -172,6 +236,11 @@
       const p1energytext = document.getElementById("p1energytext");
       const p2energytext = document.getElementById("p2energytext");
       const reset = document.getElementById("reset");
+      const battleStart = document.getElementById("battleStart");
+      const battleState = document.getElementById("battleState");
+      const npcDifficulty = document.getElementById("npcDifficulty");
+      const debugMode = document.getElementById("debugMode");
+      const debugPanel = document.getElementById("debugPanel");
 
       async function refreshStatus() {
         try {
@@ -181,6 +250,24 @@
           camera.textContent = `camera: ${data.camera_online ? "online" : "offline"}`;
           frames.textContent = `frames: ${data.frames_out}`;
           latency.textContent = `processing: ${data.processing_ms} ms`;
+          debugMode.value = data.debug_mode || "off";
+          const npc = data.npc || { enabled: false, difficulty: "easy" };
+          const battle = data.battle || { enabled: false, active: true, requested: false, starts_in: 0 };
+          if (document.activeElement !== npcDifficulty) {
+            npcDifficulty.value = npc.difficulty || "easy";
+          }
+          npcDifficulty.disabled = !npc.enabled || Boolean(battle.requested) || Boolean(battle.active);
+          battleStart.disabled = !npc.enabled || Boolean(battle.requested) || Boolean(battle.active);
+          if (!npc.enabled) {
+            battleState.textContent = "battle: 2P mode";
+          } else if (battle.active) {
+            battleState.textContent = `battle: active (${npc.difficulty})`;
+          } else if (battle.requested) {
+            battleState.textContent = `battle: ${Number(battle.starts_in || 0).toFixed(1)}s`;
+          } else {
+            battleState.textContent = `battle: waiting (${npc.difficulty})`;
+          }
+          renderDebug(data.debug_mode || "off", data.debug || []);
           const game = data.game || { hp: [100, 100], max_hp: 100 };
           const hp = game.hp || [100, 100];
           const maxHp = game.max_hp || 100;
@@ -200,6 +287,87 @@
           camera.textContent = "camera: offline";
         }
       }
+
+      function fmt(value) {
+        if (Array.isArray(value)) return value.join(", ");
+        if (value && typeof value === "object") return JSON.stringify(value);
+        if (value === undefined || value === null || value === "") return "-";
+        return String(value);
+      }
+
+      function metricRows(state, mode) {
+        const d = state.debug || {};
+        const rows = [
+          ["detected", state.detected],
+          ["active", state.active],
+          ["charging", state.charging],
+          ["pose_ms", d.pose_ms],
+          ["missing", d.missing && d.missing.length ? d.missing.join(",") : "-"],
+          ["extension", d.extension],
+          ["wrist_gap_ratio", d.wrist_gap_ratio],
+          ["active_smooth", d.active_smooth],
+          ["charge_frames", d.charge_frames],
+          ["hands_together", d.hands_together],
+          ["wrists_at_chest_height", d.wrists_at_chest_height],
+          ["firing_gesture", d.firing_gesture],
+          ["active_raw", d.active_raw],
+        ];
+        if (mode === "full") {
+          rows.push(
+            ["shoulder_width", d.shoulder_width],
+            ["reach", d.reach],
+            ["elbows_forward", d.elbows_forward],
+            ["powering", state.powering],
+            ["transforming", state.transforming],
+            ["visibility", d.visibility],
+            ["roi", d.roi],
+          );
+        }
+        return rows;
+      }
+
+      function renderDebug(mode, states) {
+        debugPanel.classList.toggle("visible", mode !== "off");
+        if (mode === "off") {
+          debugPanel.replaceChildren();
+          return;
+        }
+        const parts = states.map((state) => {
+          const rows = metricRows(state, mode)
+            .map(([key, value]) => `<span class="debug-key">${key}</span><span>${fmt(value)}</span>`)
+            .join("");
+          return `<div class="debug-player"><div class="debug-title">P${(state.player_id ?? 0) + 1}</div><div class="debug-grid">${rows}</div></div>`;
+        });
+        debugPanel.innerHTML = parts.length ? parts.join("") : '<div class="debug-title">waiting for debug data</div>';
+      }
+
+      debugMode.addEventListener("change", async () => {
+        const mode = debugMode.value;
+        await fetch("/debug", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode }),
+        });
+        await refreshStatus();
+      });
+
+      npcDifficulty.addEventListener("change", async () => {
+        await fetch("/npc/difficulty", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ difficulty: npcDifficulty.value }),
+        });
+        await refreshStatus();
+      });
+
+      battleStart.addEventListener("click", async () => {
+        await fetch("/battle/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ difficulty: npcDifficulty.value }),
+        });
+        await refreshStatus();
+      });
 
       reset.addEventListener("click", async () => {
         await fetch("/reset", { method: "POST" });

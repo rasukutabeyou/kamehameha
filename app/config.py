@@ -20,7 +20,7 @@ class GameConfig:
     ultra_damage_multiplier: float = 2.0
     ultra_energy_charge_multiplier: float = 2.0
     ultra_damage_reduction: int = 1
-    ultra_energy_drain_per_s: float = 1.0
+    ultra_energy_drain_per_s: float = 3.0
 
     @classmethod
     def from_env(cls) -> "GameConfig":

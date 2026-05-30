@@ -59,7 +59,13 @@ BEAM_WIDTH=960 BEAM_PLAYERS=2 BEAM_DETECTION=0.55 BEAM_TRACKING=0.55 uv run uvic
 - `BEAM_WIDTH`: サーバ内部処理解像度。軽くしたい場合は `720`、画質重視なら `1280`。
 - `BEAM_DETECTION`: 検出信頼度。上げると誤検出が減り、検出漏れが増えます。
 - `BEAM_TRACKING`: 追跡信頼度。上げると安定寄りになります。
-- `BEAM_PLAYERS`: `2` で左右二人モード、`1` で従来の一人モード。二人モードは Pose を2本走らせるため、一人モードより重くなります。
+- `BEAM_PLAYERS`: `2` で左右二人モード、`1` で一人モード。`BEAM_PLAYERS=1` ではデフォルトで右側にNPCが出ます。二人モードは Pose を2本走らせるため、一人モードより重くなります。
+- `BEAM_NPC`: `1` で一人モードのNPCを有効化、`0` で無効化。デフォルトは `1`。NPC戦はブラウザの `Battle Start` を押してから5秒後に始まります。
+- `BEAM_NPC_DIFFICULTY`: NPC難易度。`easy`、`normal`、`hard`。デフォルトは `easy`。`hard` は開始時にNPCがウルトラ状態になります。
+- `BEAM_BATTLE_START_DELAY`: `Battle Start` 後にNPCが動き始めるまでの秒数。デフォルトは `5`。
+- `BEAM_NPC_COOLDOWN`: NPCの待機秒数。デフォルトは `1.25`。
+- `BEAM_NPC_CHARGE`: NPCのチャージ秒数。デフォルトは `1.25`。
+- `BEAM_NPC_ATTACK`: NPCの攻撃秒数。デフォルトは `1.15`。
 - `BEAM_MAX_HP`: 初期 HP。デフォルトは `100`。
 - `BEAM_DAMAGE`: 胸ヒット1回あたりのダメージ。デフォルトは `6`。
 - `BEAM_HIT_COOLDOWN`: 連続ダメージ間隔秒。デフォルトは `0.38`。
