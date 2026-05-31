@@ -34,6 +34,7 @@ class GameSnapshot:
     beam_energy_cost: float
     energy_charge_per_s: float
     energy_charge_damage_bonus: int
+    guard_damage_multiplier: float
     ultra_energy_cost: float
     ultra_damage_multiplier: float
     ultra_energy_charge_multiplier: float
@@ -150,6 +151,8 @@ class BeamGame:
             damage *= self.config.ultra_damage_multiplier
         if target.powering:
             damage += self.config.energy_charge_damage_bonus
+        if target.guarding:
+            damage *= self.config.guard_damage_multiplier
         if self._is_ultra(target.player_id):
             damage -= self.config.ultra_damage_reduction
         return max(0, int(round(damage)))
@@ -175,6 +178,7 @@ class BeamGame:
             beam_energy_cost=self.config.beam_energy_cost,
             energy_charge_per_s=self.config.energy_charge_per_s,
             energy_charge_damage_bonus=self.config.energy_charge_damage_bonus,
+            guard_damage_multiplier=self.config.guard_damage_multiplier,
             ultra_energy_cost=self.config.ultra_energy_cost,
             ultra_damage_multiplier=self.config.ultra_damage_multiplier,
             ultra_energy_charge_multiplier=self.config.ultra_energy_charge_multiplier,
@@ -221,7 +225,12 @@ class BeamGame:
                 color = (60, 245, 255)
             elif state.powering:
                 color = (80, 255, 145)
-            cv2.circle(frame, state.chest_center, state.chest_radius, color, 2, lineType=cv2.LINE_AA)
+            if state.guarding:
+                x, y = state.chest_center
+                r = state.chest_radius
+                cv2.rectangle(frame, (x - r, y - r), (x + r, y + r), color, 2, lineType=cv2.LINE_AA)
+            else:
+                cv2.circle(frame, state.chest_center, state.chest_radius, color, 2, lineType=cv2.LINE_AA)
             cv2.circle(frame, state.chest_center, 5, (255, 255, 255), -1, lineType=cv2.LINE_AA)
 
     def _draw_player_bars(self, frame: np.ndarray, states: list[BeamState]) -> None:

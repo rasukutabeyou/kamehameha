@@ -72,6 +72,7 @@ class BeamEffect:
             cv2.line(frame, p1, p2, palette[i % len(palette)], 2, lineType=cv2.LINE_AA)
         return frame
 
+
     def _draw_power(self, frame: np.ndarray, state: BeamState) -> np.ndarray:
         center = state.chest_center
         palette = [(45, 210, 100), (105, 255, 155), (225, 255, 210)]

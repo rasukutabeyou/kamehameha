@@ -101,6 +101,11 @@ class FrameProcessor:
                     frame.shape,
                     raw_states[0] if raw_states else None,
                     npc_hp,
+                    energy=self.game.energy[self.npc.config.player_id] if self.npc.config.player_id < len(self.game.energy) else None,
+                    beam_energy_cost=self.game.config.beam_energy_cost,
+                    beam_charge_s=self.game.config.beam_charge_s,
+                    ultra=self.game.ultra[self.npc.config.player_id] if self.npc.config.player_id < len(self.game.ultra) else False,
+                    ultra_energy_drain_per_s=self.game.config.ultra_energy_drain_per_s,
                     battle_active=battle_active,
                     starts_in=starts_in,
                 )
@@ -279,6 +284,7 @@ class FrameProcessor:
             "charging": state.charging,
             "powering": state.powering,
             "transforming": state.transforming,
+            "guarding": state.guarding,
             "mode": state.mode,
             "confidence": round(state.confidence, 3),
             "origin": state.origin,
@@ -314,7 +320,7 @@ class FrameProcessor:
         debug = state.debug
         missing = debug.get("missing") or []
         lines = [
-            f"P{state.player_id + 1} det={int(state.detected)} act={int(state.active)} chg={int(state.charging)}",
+            f"P{state.player_id + 1} det={int(state.detected)} act={int(state.active)} chg={int(state.charging)} guard={int(state.guarding)}",
             f"pose={debug.get('pose_ms', '-')}ms mode={state.mode} conf={state.confidence:.2f}",
             f"missing={','.join(missing) if missing else '-'}",
             f"ext={debug.get('extension', '-')} gap={debug.get('wrist_gap_ratio', '-')} smooth={debug.get('active_smooth', '-')}",

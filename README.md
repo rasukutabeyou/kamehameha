@@ -76,6 +76,7 @@ BEAM_WIDTH=960 BEAM_PLAYERS=2 BEAM_DETECTION=0.55 BEAM_TRACKING=0.55 uv run uvic
 - `BEAM_ENERGY_COST`: ビーム1回あたりのエネルギー消費。デフォルトは `25`。
 - `BEAM_ENERGY_CHARGE_PER_SEC`: エネルギー溜め中の毎秒回復量。デフォルトは `5`。
 - `BEAM_ENERGY_CHARGE_DAMAGE_BONUS`: エネルギー溜め中に受ける追加ダメージ。デフォルトは `2`。
+- `BEAM_GUARD_DAMAGE_MULTIPLIER`: ガード中に受けるダメージ倍率。`0.45` なら通常の45%。デフォルトは `0.45`。
 - `BEAM_ULTRA_ENERGY_COST`: ウルトラ化に必要なエネルギー。デフォルトは `75`。
 - `BEAM_ULTRA_DAMAGE_MULTIPLIER`: ウルトラ時の与ダメージ倍率。デフォルトは `2`。
 - `BEAM_ULTRA_ENERGY_CHARGE_MULTIPLIER`: ウルトラ時のエネルギー溜め速度倍率。デフォルトは `2`。

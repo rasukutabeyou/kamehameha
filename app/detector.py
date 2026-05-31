@@ -25,6 +25,7 @@ class BeamState:
     beam_ratio: float = 0.0
     powering: bool = False
     transforming: bool = False
+    guarding: bool = False
     ultra: bool = False
     debug: dict[str, object] = field(default_factory=dict)
 
@@ -173,19 +174,22 @@ class SinglePoseDetector:
         )
         wrists_near_core = self._dist(lw, body_mid) < shoulder_width * 1.12 and self._dist(rw, body_mid) < shoulder_width * 1.12
         elbows_tucked = self._dist(le, body_mid) < shoulder_width * 0.92 and self._dist(re, body_mid) < shoulder_width * 0.92
-        powering = not hands_together and hands_low and wrists_at_chest_height and wrists_near_core and elbows_tucked
-        transforming = lw[1] < shoulder_mid[1] - shoulder_width * 0.55 and rw[1] < shoulder_mid[1] - shoulder_width * 0.55
+        left_guard = self._guard_arm(ls, le, lw, shoulder_mid, chest, body_mid, shoulder_width)
+        right_guard = self._guard_arm(rs, re, rw, shoulder_mid, chest, body_mid, shoulder_width)
+        guarding = (left_guard or right_guard) and not hands_together
+        powering = not guarding and not hands_together and hands_low and wrists_at_chest_height and wrists_near_core and elbows_tucked
+        transforming = not guarding and lw[1] < shoulder_mid[1] - shoulder_width * 0.55 and rw[1] < shoulder_mid[1] - shoulder_width * 0.55
 
-        charging = hands_together and extension < 1.25 and not powering and not transforming
+        charging = hands_together and extension < 1.25 and not guarding and not powering and not transforming
         if charging:
             self._charge_frames = min(18, self._charge_frames + 1)
         else:
             self._charge_frames = max(0, self._charge_frames - 1)
 
-        firing_gesture = hands_together and extension >= 0.72 and elbows_forward and not powering and not transforming
+        firing_gesture = hands_together and extension >= 0.72 and elbows_forward and not guarding and not powering and not transforming
         active_raw = firing_gesture and (self._charge_frames >= 3 or extension >= 1.05)
         self._active_smooth = self._active_smooth * 0.68 + (1.0 if active_raw else 0.0) * 0.32
-        active = self._active_smooth > 0.36 and not transforming
+        active = self._active_smooth > 0.36 and not guarding and not transforming
 
         dx = hand_mid[0] - shoulder_mid[0]
         dy = hand_mid[1] - shoulder_mid[1]
@@ -214,6 +218,7 @@ class SinglePoseDetector:
             chest_radius=int(max(34, min(110, shoulder_width * 0.58))),
             powering=powering,
             transforming=transforming,
+            guarding=guarding,
             debug={
                 "roi": roi,
                 "pose_ms": round(pose_ms, 2),
@@ -232,6 +237,9 @@ class SinglePoseDetector:
                 "wrists_at_chest_height": wrists_at_chest_height,
                 "wrists_near_core": wrists_near_core,
                 "elbows_tucked": elbows_tucked,
+                "left_guard": left_guard,
+                "right_guard": right_guard,
+                "guarding": guarding,
                 "charging_raw": charging,
                 "firing_extension_threshold": 0.72,
                 "instant_fire_extension_threshold": 1.05,
@@ -269,6 +277,35 @@ class SinglePoseDetector:
         if "hip" in landmark_name:
             return self._visibility_thresholds["hip"]
         return self._visibility_thresholds["shoulder"]
+
+
+    @staticmethod
+    def _guard_arm(
+        shoulder: tuple[float, float],
+        elbow: tuple[float, float],
+        wrist: tuple[float, float],
+        shoulder_mid: tuple[float, float],
+        chest: tuple[float, float],
+        body_mid: tuple[float, float],
+        shoulder_width: float,
+    ) -> bool:
+        forearm_dx = abs(wrist[0] - elbow[0])
+        forearm_dy = abs(wrist[1] - elbow[1])
+        forearm_len = max(1.0, SinglePoseDetector._dist(elbow, wrist))
+        forearm_parallel_torso = forearm_dy / forearm_len >= 0.78 and forearm_dx <= shoulder_width * 0.42
+        wrist_above_elbow = wrist[1] <= elbow[1] - shoulder_width * 0.18
+        wrist_upper_body = shoulder_mid[1] - shoulder_width * 0.75 <= wrist[1] <= chest[1] + shoulder_width * 0.35
+        elbow_body_height = shoulder_mid[1] - shoulder_width * 0.15 <= elbow[1] <= body_mid[1] + shoulder_width * 0.55
+        arm_in_front_of_body = abs(elbow[0] - chest[0]) <= shoulder_width * 1.0 and abs(wrist[0] - chest[0]) <= shoulder_width * 1.05
+        upper_arm_not_extended = SinglePoseDetector._dist(shoulder, elbow) <= shoulder_width * 1.15
+        return (
+            forearm_parallel_torso
+            and wrist_above_elbow
+            and wrist_upper_body
+            and elbow_body_height
+            and arm_in_front_of_body
+            and upper_arm_not_extended
+        )
 
     @staticmethod
     def _point(landmark, width: int, height: int, visibility_threshold: float) -> Optional[tuple[float, float]]:

@@ -9,7 +9,7 @@
         color-scheme: dark;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background: #090b0f;
-        color: #f5f7fb;
+        color: #8fd3ff;
       }
 
       * {
@@ -44,7 +44,7 @@
         display: flex;
         gap: 14px;
         align-items: center;
-        color: #c8d2e0;
+        color: #7fc7ff;
         font-size: 13px;
         white-space: nowrap;
       }
@@ -82,7 +82,7 @@
         padding: 0 12px;
         border: 1px solid #465569;
         background: #1b2432;
-        color: #f5f7fb;
+        color: #8fd3ff;
         border-radius: 6px;
       }
 
@@ -102,7 +102,7 @@
       }
 
       .control span {
-        color: #93a4ba;
+        color: #62b8f5;
       }
 
       .dot {
@@ -137,7 +137,7 @@
         overflow: auto;
         border: 1px solid #3b495c;
         background: rgba(10, 14, 20, 0.84);
-        color: #d7e1ef;
+        color: #9bd8ff;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         font-size: 12px;
         line-height: 1.45;
@@ -156,7 +156,7 @@
       }
 
       .debug-title {
-        color: #f5f7fb;
+        color: #8fd3ff;
         font-weight: 700;
         margin-bottom: 4px;
       }
@@ -168,7 +168,7 @@
       }
 
       .debug-key {
-        color: #90a4bd;
+        color: #5fb2ef;
       }
 
       img {
@@ -317,8 +317,11 @@
             ["shoulder_width", d.shoulder_width],
             ["reach", d.reach],
             ["elbows_forward", d.elbows_forward],
+            ["left_guard", d.left_guard],
+            ["right_guard", d.right_guard],
             ["powering", state.powering],
             ["transforming", state.transforming],
+            ["guarding", state.guarding],
             ["visibility", d.visibility],
             ["roi", d.roi],
           );

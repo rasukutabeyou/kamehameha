@@ -6,20 +6,21 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class GameConfig:
-    max_hp: int = 100
-    damage: int = 6
+    max_hp: int = 300
+    damage: int = 10
     hit_cooldown_s: float = 0.38
     beam_charge_s: float = 1.15
     beam_duration_s: float = 2.4
     energy_initial: float = 50.0
     energy_max: float = 100.0
-    beam_energy_cost: float = 25.0
-    energy_charge_per_s: float = 5.0
-    energy_charge_damage_bonus: int = 2
-    ultra_energy_cost: float = 75.0
+    beam_energy_cost: float = 30.0
+    energy_charge_per_s: float = 10.0
+    energy_charge_damage_bonus: int = 4
+    guard_damage_multiplier: float = 0.6
+    ultra_energy_cost: float = 70.0
     ultra_damage_multiplier: float = 2.0
-    ultra_energy_charge_multiplier: float = 2.0
-    ultra_damage_reduction: int = 1
+    ultra_energy_charge_multiplier: float = 3.0
+    ultra_damage_reduction: int = 5
     ultra_energy_drain_per_s: float = 3.0
 
     @classmethod
@@ -35,6 +36,7 @@ class GameConfig:
             beam_energy_cost=float(os.getenv("BEAM_ENERGY_COST", str(cls.beam_energy_cost))),
             energy_charge_per_s=float(os.getenv("BEAM_ENERGY_CHARGE_PER_SEC", str(cls.energy_charge_per_s))),
             energy_charge_damage_bonus=int(os.getenv("BEAM_ENERGY_CHARGE_DAMAGE_BONUS", str(cls.energy_charge_damage_bonus))),
+            guard_damage_multiplier=float(os.getenv("BEAM_GUARD_DAMAGE_MULTIPLIER", str(cls.guard_damage_multiplier))),
             ultra_energy_cost=float(os.getenv("BEAM_ULTRA_ENERGY_COST", str(cls.ultra_energy_cost))),
             ultra_damage_multiplier=float(os.getenv("BEAM_ULTRA_DAMAGE_MULTIPLIER", str(cls.ultra_damage_multiplier))),
             ultra_energy_charge_multiplier=float(os.getenv("BEAM_ULTRA_ENERGY_CHARGE_MULTIPLIER", str(cls.ultra_energy_charge_multiplier))),
